@@ -1,7 +1,13 @@
-import gradio as gr 
+import gradio as gr
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 from collections import Counter
+import nltk
+from nltk import word_tokenize, pos_tag
+
+# Download necessary NLTK data
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
 
 # Load model and tokenizer globally
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
@@ -13,18 +19,71 @@ model = model.to(device)
 
 # Function to extract key points for "Main Points"
 def extract_main_points(text, num_points=5):
-    sentences = text.split('. ')
-    # Professionally formatted list of key points (first few sentences)
-    points = [f"• {sentence.strip()}" for sentence in sentences[:num_points]]
-    return "\n".join(points) + "."
+    # Use the BART model to summarize the text with shorter length
+    summary = summarize_bart(text, max_length=150, min_length=80)
+    
+    # Split summary into sentences
+    sentences = summary.split('. ')
+    
+    # Take only a limited number of key sentences for main points
+    points = [f"• {sentence.strip()}." for sentence in sentences[:num_points] if sentence.strip()]
+    
+    # Join all points with single newlines between them
+    return "\n".join(points)
 
-# Function to extract key concepts for "Concepts List"
-def extract_concepts(text, num_concepts=10):
-    words = text.split()
-    # Simple frequency-based concept extraction
-    filtered_words = [word for word in words if len(word) > 7 and word.lower() not in ["the", "and", "with", "that", "from", "this"]]
-    most_common_words = [word for word, _ in Counter(filtered_words).most_common(num_concepts)]
-    return ", ".join(set(most_common_words))
+# Function to clean and extract relevant nouns and adjectives for concepts
+def extract_key_terms(text, num_concepts=10):
+    # Tokenize the text and get part of speech tags
+    words = word_tokenize(text)
+    pos_tags = pos_tag(words)
+
+    # Filter for nouns and adjectives
+    relevant_words = [word for word, pos in pos_tags if pos in ["NN", "NNS", "JJ", "JJR", "JJS"] and len(word) > 3]
+    
+    # Get the most common nouns/adjectives
+    most_common_words = [word for word, _ in Counter(relevant_words).most_common(num_concepts)]
+    
+    return most_common_words
+
+# Function to extract key concepts for "Concepts List" with AI-generated definitions
+def extract_concepts_with_definitions(text, num_concepts=10):
+    # Extract key terms from the text
+    key_terms = extract_key_terms(text, num_concepts)
+    
+    # Generate AI-based definitions for each concept
+    definitions = []
+    for term in set(key_terms):
+        # Create a specific and clear prompt to define the term in context
+        prompt = f"Define the word '{term}' clearly in the context of the following text:\n{text}"
+        definition = summarize_bart(prompt, max_length=50, min_length=15)
+        
+        # Clean the generated definition to remove unwanted text
+        cleaned_definition = clean_definition(definition)
+        
+        # If the definition is still empty, handle it more gracefully
+        if not cleaned_definition.strip():
+            cleaned_definition = "Could not generate a definition."
+
+        # Format the term with its definition
+        definitions.append(f"• {term} = {cleaned_definition.strip()}")
+
+    return "\n".join(definitions)
+
+# Retry function if initial AI generation fails
+def retry_definition(term, text):
+    retry_prompt = f"Try again: Provide a simple definition of '{term}' in the context of this text."
+    retry_definition = summarize_bart(retry_prompt, max_length=50, min_length=15)
+    cleaned_retry = clean_definition(retry_definition)
+    
+    if not cleaned_retry.strip():
+        return "Definition could not be generated."
+    return cleaned_retry
+
+# Helper function to clean unnecessary parts from the generated definition
+def clean_definition(definition):
+    # Remove any instruction-like parts or irrelevant text
+    clean_lines = [line for line in definition.split('. ') if not line.lower().startswith("please provide")]
+    return '. '.join(clean_lines).strip()
 
 # Function to summarize text using BART model for "Short", "Medium", and "Long Summaries"
 def summarize_bart(input_text, max_length, min_length):
@@ -49,14 +108,14 @@ def generate_summary(input_text, url, file, format_type, source):
         content = ""
 
     if not content:
-        return "No content to summarize.", None
+        return "No content to summarize."
 
     # Process content based on the selected summary type
     try:
         if format_type == "Main Points":
             summary = extract_main_points(content)
         elif format_type == "Concepts List":
-            summary = extract_concepts(content)
+            summary = extract_concepts_with_definitions(content)
         elif format_type == "Short Summary":
             summary = summarize_bart(content, max_length=80, min_length=40)
         elif format_type == "Medium Summary":
@@ -66,9 +125,9 @@ def generate_summary(input_text, url, file, format_type, source):
         else:
             summary = content
     except Exception as e:
-        return f"Error during summarization: {str(e)}", None
+        return f"Error during summarization: {str(e)}"
 
-    return summary, None  # No need for additional visibility handling here
+    return summary  # Return only the summary without parentheses
 
 # Function to handle dynamic input box visibility
 def dynamic_input(source):
@@ -95,7 +154,8 @@ with gr.Blocks() as demo:
     # Dropdown to select summary type
     format_type = gr.Dropdown(
         ["Main Points", "Concepts List", "Short Summary", "Medium Summary", "Long Summary"],
-        label="Select Summary Type"
+        label="Select Summary Type",
+        value="Main Points"  # Set Main Points as the default option
     )
 
     # Output box for the generated summary
@@ -104,15 +164,15 @@ with gr.Blocks() as demo:
     # Button to trigger the summarization
     summary_button = gr.Button("Generate Summary")
 
-    # Dynamically update the input box based on the selected input method
-    source.change(fn=dynamic_input, inputs=source, outputs=[text_input_box, file_input_box, url_input_box])
-
-    # When the 'Generate Summary' button is clicked
+    # Ensure the correct initial summary generation for Main Points
     summary_button.click(
         fn=generate_summary,
         inputs=[text_input_box, url_input_box, file_input_box, format_type, source],
         outputs=[summary_output_box]
     )
+
+    # Dynamically update the input box based on the selected input method
+    source.change(fn=dynamic_input, inputs=source, outputs=[text_input_box, file_input_box, url_input_box])
 
 # Launch the Gradio interface
 demo.launch()
