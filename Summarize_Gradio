@@ -1,0 +1,118 @@
+import gradio as gr 
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
+from collections import Counter
+
+# Load model and tokenizer globally
+tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
+model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
+
+# Check if GPU is available and use it if possible
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = model.to(device)
+
+# Function to extract key points for "Main Points"
+def extract_main_points(text, num_points=5):
+    sentences = text.split('. ')
+    # Professionally formatted list of key points (first few sentences)
+    points = [f"• {sentence.strip()}" for sentence in sentences[:num_points]]
+    return "\n".join(points) + "."
+
+# Function to extract key concepts for "Concepts List"
+def extract_concepts(text, num_concepts=10):
+    words = text.split()
+    # Simple frequency-based concept extraction
+    filtered_words = [word for word in words if len(word) > 7 and word.lower() not in ["the", "and", "with", "that", "from", "this"]]
+    most_common_words = [word for word, _ in Counter(filtered_words).most_common(num_concepts)]
+    return ", ".join(set(most_common_words))
+
+# Function to summarize text using BART model for "Short", "Medium", and "Long Summaries"
+def summarize_bart(input_text, max_length, min_length):
+    # Tokenize input and handle truncation
+    inputs = tokenizer(input_text, return_tensors="pt", max_length=1024, truncation=True)
+    inputs = inputs.to(device)
+
+    # Generate summary
+    summary_ids = model.generate(inputs["input_ids"], max_length=max_length, min_length=min_length, do_sample=False)
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    return summary
+
+# Function to generate the summary based on the selected input and summary type
+def generate_summary(input_text, url, file, format_type, source):
+    if source == "Text Input":
+        content = input_text
+    elif source == "Web Page URL":
+        content = url  # You'd fetch the URL content here in a real implementation
+    elif source == "File Upload" and file is not None:
+        content = file.read().decode('utf-8')  # Read uploaded file
+    else:
+        content = ""
+
+    if not content:
+        return "No content to summarize.", None
+
+    # Process content based on the selected summary type
+    try:
+        if format_type == "Main Points":
+            summary = extract_main_points(content)
+        elif format_type == "Concepts List":
+            summary = extract_concepts(content)
+        elif format_type == "Short Summary":
+            summary = summarize_bart(content, max_length=80, min_length=40)
+        elif format_type == "Medium Summary":
+            summary = summarize_bart(content, max_length=200, min_length=100)
+        elif format_type == "Long Summary":
+            summary = summarize_bart(content, max_length=400, min_length=200)
+        else:
+            summary = content
+    except Exception as e:
+        return f"Error during summarization: {str(e)}", None
+
+    return summary, None  # No need for additional visibility handling here
+
+# Function to handle dynamic input box visibility
+def dynamic_input(source):
+    if source == "Text Input":
+        return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
+    elif source == "Web Page URL":
+        return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
+    elif source == "File Upload":
+        return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
+    return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+
+# Build the Gradio interface
+with gr.Blocks() as demo:
+    gr.Markdown("### Summarization with Different Styles")
+
+    # Input method selection
+    source = gr.Dropdown(["Text Input", "Web Page URL", "File Upload"], label="Input Method", value="Text Input", interactive=True)
+
+    # Input boxes (initially only "Text Input" is visible)
+    text_input_box = gr.Textbox(label="Enter Text", visible=True)
+    file_input_box = gr.File(label="Upload File", visible=False)
+    url_input_box = gr.Textbox(label="Enter Web Page URL", visible=False)
+
+    # Dropdown to select summary type
+    format_type = gr.Dropdown(
+        ["Main Points", "Concepts List", "Short Summary", "Medium Summary", "Long Summary"],
+        label="Select Summary Type"
+    )
+
+    # Output box for the generated summary
+    summary_output_box = gr.Textbox(label="Generated Summary", visible=True, lines=10)
+
+    # Button to trigger the summarization
+    summary_button = gr.Button("Generate Summary")
+
+    # Dynamically update the input box based on the selected input method
+    source.change(fn=dynamic_input, inputs=source, outputs=[text_input_box, file_input_box, url_input_box])
+
+    # When the 'Generate Summary' button is clicked
+    summary_button.click(
+        fn=generate_summary,
+        inputs=[text_input_box, url_input_box, file_input_box, format_type, source],
+        outputs=[summary_output_box]
+    )
+
+# Launch the Gradio interface
+demo.launch()
