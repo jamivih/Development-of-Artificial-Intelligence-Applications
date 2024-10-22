@@ -1,27 +1,29 @@
-import gradio as gr
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+import gradio as gr 
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from collections import Counter
 import torch
 from nltk.corpus import wordnet
 import nltk
+from langdetect import detect, LangDetectException  # Import langdetect
+
 nltk.download('wordnet')
 
-# Ladataan BART-tokenisoija ja malli tiivistelmien tekemiseen
+# Load BART tokenizer and model for summarization
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
 model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
 
-# Tarkistetaan, onko GPU käytettävissä ja käytetään sitä, jos mahdollista
+# Check if GPU is available and use it if possible
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = model.to(device)
 
-# Funktio tärkeimpien kohtien tiivistämiseen
+# Function to summarize key points
 def extract_main_points(text, num_points=5):
     summary = summarize_bart(text, max_length=150, min_length=80)
     sentences = summary.split('. ')
     points = [f"• {sentence.strip()}." for sentence in sentences[:num_points] if sentence.strip()]
     return "\n".join(points)
 
-# Funktio tärkeiden substantiivien ja adjektiivien poimimiseen tekstistä
+# Function to extract key nouns and adjectives from the text
 def extract_key_terms(text, num_concepts=10):
     words = nltk.word_tokenize(text)
     pos_tags = nltk.pos_tag(words)
@@ -29,28 +31,38 @@ def extract_key_terms(text, num_concepts=10):
     most_common_words = [word for word, _ in Counter(relevant_words).most_common(num_concepts)]
     return most_common_words
 
-# Funktio käsitteiden listaamiseen ja niiden määritelmien generoimiseen
+# Function to generate a list of concepts with their definitions
 def extract_concepts_with_definitions(text, num_concepts=10):
+    try:
+        # Detect the language of the input text
+        language = detect(text)
+    except LangDetectException:
+        return "Could not detect the language of the text."
+    
+    # If the language is not English, return a message
+    if language != 'en':
+        return "The 'Concepts List' feature is only supported in English."
+
     key_terms = extract_key_terms(text, num_concepts)
     definitions = []
     
     for term in set(key_terms):
-        # Yritetään saada määritelmä WordNetistä
+        # Try to get the definition from WordNet
         synsets = wordnet.synsets(term)
         if synsets:
             definition = synsets[0].definition()
             definitions.append(f"• {term} = {definition.strip()}")
         else:
-            # Sanakirjamääritelmää ei löytynyt, ei lisätä määritelmää
+            # No dictionary definition found, skip adding this term
             continue
 
-    # Jos määritelmiä ei ole, palautetaan tyhjää
+    # If no definitions were found, return a message
     if not definitions:
-        return "Ei määritelmiä löytynyt."
+        return "No definitions found."
 
     return "\n".join(definitions)
 
-# Funktio tiivistämään teksti BART-mallilla
+# Function to summarize the text using the BART model
 def summarize_bart(input_text, max_length, min_length):
     inputs = tokenizer(input_text, return_tensors="pt", max_length=1024, truncation=True)
     inputs = inputs.to(device)
@@ -58,7 +70,7 @@ def summarize_bart(input_text, max_length, min_length):
     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
     return summary
 
-# Funktio tiivistelmän luomiseen valitun tiivistelmätyypin perusteella
+# Function to generate a summary based on the selected summary type
 def generate_summary(input_text, url, file, format_type, source):
     if source == "Text Input":
         content = input_text
@@ -70,7 +82,7 @@ def generate_summary(input_text, url, file, format_type, source):
         content = ""
 
     if not content:
-        return "Ei sisältöä tiivistettäväksi."
+        return "No content to summarize."
 
     try:
         if format_type == "Main Points":
@@ -86,54 +98,54 @@ def generate_summary(input_text, url, file, format_type, source):
         else:
             summary = content
     except Exception as e:
-        return f"Virhe tiivistämisen aikana: {str(e)}"
+        return f"Error during summarization: {str(e)}"
 
     return summary
 
-# Funktio dynaamiseen syöttökentän näkyvyyden hallintaan
+# Function to dynamically control input visibility based on source type
 def dynamic_input(source):
     if source == "Text Input":
         return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
     elif source == "Web Page URL":
-        return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
-    elif source == "File Upload":
         return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
-    return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    elif source == "File Upload":
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
+    return gr.update(visible=False), gr.update(visible=False), gr.update(visible(False))
 
-# Gradio-käyttöliittymän rakentaminen
+# Build Gradio interface
 with gr.Blocks() as demo:
     gr.Markdown("### Summary App")
 
-    # Syöttötavan valinta
+    # Input type selection
     source = gr.Dropdown(["Text Input", "Web Page URL", "File Upload"], label="Input type", value="Text Input", interactive=True)
 
-    # Syöttökentät
+    # Input fields
     text_input_box = gr.Textbox(label="Enter Text", visible=True)
     file_input_box = gr.File(label="Upload a File", visible=False)
     url_input_box = gr.Textbox(label="Give Website URL", visible=False)
 
-    # Tiivistelmätyypin valinta
+    # Summary type selection
     format_type = gr.Dropdown(
         ["Main Points", "Concepts List", "Short Summary", "Medium Summary", "Long Summary"],
         label="Choose Summary Type",
         value="Main Points"
     )
 
-    # Generoidun tiivistelmän näyttökenttä
+    # Output box for the generated summary
     summary_output_box = gr.Textbox(label="Generate Summary", visible=True, lines=10)
 
-    # Painike tiivistämisen käynnistämiseksi
+    # Button to trigger summary generation
     summary_button = gr.Button("Generate Summary")
 
-    # Alustetaan tiivistelmän luominen
+    # Trigger the summary generation
     summary_button.click(
         fn=generate_summary,
         inputs=[text_input_box, url_input_box, file_input_box, format_type, source],
         outputs=[summary_output_box]
     )
 
-    # Syöttökenttien dynaaminen näkyvyys syöttötavan perusteella
+    # Dynamically update input visibility based on source type
     source.change(fn=dynamic_input, inputs=source, outputs=[text_input_box, file_input_box, url_input_box])
 
-# Käyttöliittymän käynnistys
+# Launch the interface
 demo.launch()
