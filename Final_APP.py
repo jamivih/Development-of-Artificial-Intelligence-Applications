@@ -9,6 +9,7 @@ from langdetect import detect, LangDetectException
 from gtts import gTTS
 from io import BytesIO
 import tempfile
+import url_extract
 
 nltk.download('wordnet')
 
@@ -83,7 +84,8 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
         content = input_text
     elif source == "Web Page URL":
-        content = url
+        content = url_extract.main(url)
+        print(content)
     elif source == "File Upload" and file is not None:
         content = file.read().decode('utf-8')
     else:
@@ -155,10 +157,10 @@ def dynamic_input(source):
     if source == "Text Input":
         return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
     elif source == "Web Page URL":
-        return gr.update(visible=False), gr.update(visible=True), gr.update(visible(False))
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
     elif source == "File Upload":
-        return gr.update(visible=False), gr.update(visible=False), gr.update(visible(True))
-    return gr.update(visible=False), gr.update(visible=False), gr.update(visible(False))
+        return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
+    return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 # Build Gradio interface
 with gr.Blocks() as demo:
