@@ -1,4 +1,4 @@
-import gradio as gr  
+import gradio as gr
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from collections import Counter
 import torch
@@ -9,6 +9,7 @@ from langdetect import detect, LangDetectException
 from gtts import gTTS
 from io import BytesIO
 import tempfile
+import PyPDF2
 
 nltk.download('wordnet')
 
@@ -78,6 +79,15 @@ def summarize_bart(input_text, max_length, min_length):
     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
     return summary
 
+# Function to read PDF files
+def read_pdf(file):
+    pdf_reader = PyPDF2.PdfReader(file)
+    text = ""
+    for page_num in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_num]
+        text += page.extract_text()
+    return text
+
 # Function to generate a summary based on the selected summary type and translate it if required
 def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
@@ -85,7 +95,11 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
     elif source == "Web Page URL":
         content = url
     elif source == "File Upload" and file is not None:
-        content = file.read().decode('utf-8')
+        # Check if it's a PDF file
+        if file.name.endswith('.pdf'):
+            content = read_pdf(file)
+        else:
+            content = file.read().decode('utf-8')
     else:
         content = ""
 
@@ -150,15 +164,16 @@ def text_to_speech(input_text, summary_text, summary_generated):
         return "Could not detect the language of the text."  # If language detection fails
     except Exception as e:
         return None  # Handle any other exceptions
+
 # Dynamic input visibility control based on source type
 def dynamic_input(source):
     if source == "Text Input":
         return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
     elif source == "Web Page URL":
-        return gr.update(visible=False), gr.update(visible=True), gr.update(visible(False))
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
     elif source == "File Upload":
-        return gr.update(visible=False), gr.update(visible=False), gr.update(visible(True))
-    return gr.update(visible=False), gr.update(visible=False), gr.update(visible(False))
+        return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
+    return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
 
 # Build Gradio interface
 with gr.Blocks() as demo:
@@ -201,13 +216,12 @@ with gr.Blocks() as demo:
         outputs=[summary_output_box, summary_generated]
     )
 
-        # Trigger the TTS generation
+    # Trigger the TTS generation
     tts_button.click(
         fn=text_to_speech,
         inputs=[text_input_box, summary_output_box, summary_generated],
         outputs=gr.Audio(label="Generated Speech", type="filepath")
     )
-
 
     # Dynamically update input visibility based on source type
     source.change(fn=dynamic_input, inputs=source, outputs=[text_input_box, file_input_box, url_input_box])
