@@ -10,7 +10,8 @@ from gtts import gTTS
 from io import BytesIO
 import tempfile
 import PyPDF2
-import url_extract
+import docx
+from io import BytesIO
 
 nltk.download('wordnet')
 
@@ -80,6 +81,15 @@ def summarize_bart(input_text, max_length, min_length):
     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
     return summary
 
+
+# Function to read DOCX files
+def read_docx(file):
+    doc = docx.Document(file)  # Create a Document object from the uploaded file
+    text = []
+    for paragraph in doc.paragraphs:
+        text.append(paragraph.text)
+    return '\n'.join(text)
+
 # Function to read PDF files
 def read_pdf(file):
     pdf_reader = PyPDF2.PdfReader(file)
@@ -89,18 +99,20 @@ def read_pdf(file):
         text += page.extract_text()
     return text
 
-# Function to generate a summary based on the selected summary type and translate it if required
+# Updated generate_summary function to handle file reading
 def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
         content = input_text
     elif source == "Web Page URL":
-        content = url_extract.main(url)
+        content = url
     elif source == "File Upload" and file is not None:
-        # Check if it's a PDF file
+        # Check file extension to determine the file type
         if file.name.endswith('.pdf'):
             content = read_pdf(file)
+        elif file.name.endswith('.docx'):
+            content = read_docx(file)
         else:
-            content = file.read().decode('utf-8')
+            return "Unsupported file type.", content
     else:
         content = ""
 
@@ -128,6 +140,7 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
         return f"Error during summarization: {str(e)}", content
 
     return translated_summary, content
+
 
 # Language map for TTS (adjust if needed)
 tts_language_map = {
@@ -185,7 +198,7 @@ with gr.Blocks() as demo:
 
     # Input fields
     text_input_box = gr.Textbox(label="Enter Text", visible=True)
-    file_input_box = gr.File(label="Upload a File", visible=False)
+    file_input_box = gr.File(label="Upload a File", visible=False, file_types=[".pdf", ".docx"])
     url_input_box = gr.Textbox(label="Give Website URL", visible=False)
 
     # Language selection for translation
