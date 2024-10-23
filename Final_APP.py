@@ -9,6 +9,7 @@ from langdetect import detect, LangDetectException
 from gtts import gTTS
 from io import BytesIO
 import tempfile
+import PyPDF2
 
 nltk.download('wordnet')
 
@@ -92,8 +93,7 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
         content = input_text
     elif source == "Web Page URL":
-        content = url_extract.main(url)
-        print(content)
+        content = url
     elif source == "File Upload" and file is not None:
         # Check if it's a PDF file
         if file.name.endswith('.pdf'):
