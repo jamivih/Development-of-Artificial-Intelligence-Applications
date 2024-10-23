@@ -1,10 +1,11 @@
-import gradio as gr 
+import gradio as gr  
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from collections import Counter
 import torch
 from nltk.corpus import wordnet
 import nltk
-from langdetect import detect, LangDetectException  # Import langdetect
+from deep_translator import GoogleTranslator
+from langdetect import detect, LangDetectException
 
 nltk.download('wordnet')
 
@@ -31,36 +32,40 @@ def extract_key_terms(text, num_concepts=10):
     most_common_words = [word for word, _ in Counter(relevant_words).most_common(num_concepts)]
     return most_common_words
 
-# Function to generate a list of concepts with their definitions
+# Function to generate a list of concepts with their definitions (for English input)
 def extract_concepts_with_definitions(text, num_concepts=10):
     try:
-        # Detect the language of the input text
         language = detect(text)
     except LangDetectException:
         return "Could not detect the language of the text."
     
-    # If the language is not English, return a message
+    # Ensure this feature only works for English input
     if language != 'en':
-        return "The 'Concepts List' feature is only supported in English."
+        return "The 'Concepts List' feature only works with English input."
 
     key_terms = extract_key_terms(text, num_concepts)
     definitions = []
     
     for term in set(key_terms):
-        # Try to get the definition from WordNet
         synsets = wordnet.synsets(term)
         if synsets:
             definition = synsets[0].definition()
             definitions.append(f"• {term} = {definition.strip()}")
         else:
-            # No dictionary definition found, skip adding this term
             continue
 
-    # If no definitions were found, return a message
     if not definitions:
         return "No definitions found."
 
     return "\n".join(definitions)
+
+# Function to translate the summarized text (used for Concepts List and Summaries)
+def translate_summary(text, target_lang):
+    if target_lang != "Original":  # Only translate if a language other than "Original" is selected
+        translator = GoogleTranslator(source="en", target=target_lang)
+        translated_text = translator.translate(text)
+        return translated_text
+    return text  # If "Original" is selected, return the original text
 
 # Function to summarize the text using the BART model
 def summarize_bart(input_text, max_length, min_length):
@@ -70,8 +75,8 @@ def summarize_bart(input_text, max_length, min_length):
     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
     return summary
 
-# Function to generate a summary based on the selected summary type
-def generate_summary(input_text, url, file, format_type, source):
+# Function to generate a summary based on the selected summary type and translate it if required
+def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
         content = input_text
     elif source == "Web Page URL":
@@ -87,7 +92,8 @@ def generate_summary(input_text, url, file, format_type, source):
     try:
         if format_type == "Main Points":
             summary = extract_main_points(content)
-        elif format_type == "Concepts List":
+        elif format_type == "Concepts List (Only works with English Input)":
+            # Extract concepts with definitions in English
             summary = extract_concepts_with_definitions(content)
         elif format_type == "Short Summary":
             summary = summarize_bart(content, max_length=80, min_length=40)
@@ -97,10 +103,14 @@ def generate_summary(input_text, url, file, format_type, source):
             summary = summarize_bart(content, max_length=400, min_length=200)
         else:
             summary = content
+
+        # Translate the summary to the selected language if needed (for all types, including Concepts List)
+        translated_summary = translate_summary(summary, target_lang)
+        
     except Exception as e:
         return f"Error during summarization: {str(e)}"
 
-    return summary
+    return translated_summary
 
 # Function to dynamically control input visibility based on source type
 def dynamic_input(source):
@@ -110,7 +120,7 @@ def dynamic_input(source):
         return gr.update(visible=False), gr.update(visible=True), gr.update(visible=False)
     elif source == "File Upload":
         return gr.update(visible=False), gr.update(visible=False), gr.update(visible=True)
-    return gr.update(visible=False), gr.update(visible=False), gr.update(visible(False))
+    return gr.update(visible=False), gr.update(visible(False)), gr.update(visible(False))
 
 # Build Gradio interface
 with gr.Blocks() as demo:
@@ -124,15 +134,18 @@ with gr.Blocks() as demo:
     file_input_box = gr.File(label="Upload a File", visible=False)
     url_input_box = gr.Textbox(label="Give Website URL", visible=False)
 
+    # Language selection for translation
+    target_lang = gr.Dropdown(["Original", "fi", "es", "fr", "de"], label="Choose Output Language", value="Original")
+
     # Summary type selection
     format_type = gr.Dropdown(
-        ["Main Points", "Concepts List", "Short Summary", "Medium Summary", "Long Summary"],
+        ["Main Points", "Concepts List (Only works with English Input)", "Short Summary", "Medium Summary", "Long Summary"],
         label="Choose Summary Type",
         value="Main Points"
     )
 
     # Output box for the generated summary
-    summary_output_box = gr.Textbox(label="Generate Summary", visible=True, lines=10)
+    summary_output_box = gr.Textbox(label="Generated Summary", visible=True, lines=10)
 
     # Button to trigger summary generation
     summary_button = gr.Button("Generate Summary")
@@ -140,7 +153,7 @@ with gr.Blocks() as demo:
     # Trigger the summary generation
     summary_button.click(
         fn=generate_summary,
-        inputs=[text_input_box, url_input_box, file_input_box, format_type, source],
+        inputs=[text_input_box, url_input_box, file_input_box, format_type, source, target_lang],
         outputs=[summary_output_box]
     )
 
