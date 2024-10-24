@@ -71,6 +71,7 @@ def translate_summary(text, target_lang):
         return translated_text
     return text  # If "Original" is selected, return the original text
 
+# Function to divide the input text into chunks (if needed) and generate the summary
 def summarize_bart(input_text, max_length, min_length):
     chunk_size = 1024
     overlap = 10
