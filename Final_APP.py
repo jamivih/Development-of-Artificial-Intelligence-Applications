@@ -121,7 +121,7 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
         content = input_text
     elif source == "Web Page URL":
-        content = url_extract.main()
+        content = url_extract.main(url)
     elif source == "File Upload" and file is not None:
         # Check file extension to determine the file type
         if file.name.endswith('.pdf'):
