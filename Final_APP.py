@@ -2,18 +2,16 @@ import gradio as gr
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from collections import Counter
 import torch
+import nltk; nltk.download('popular')
 from nltk.corpus import wordnet
-import nltk
 from deep_translator import GoogleTranslator
 from langdetect import detect, LangDetectException
 from gtts import gTTS
 from io import BytesIO
 import tempfile
 import PyPDF2
-import docx
+import docx     # Library's name is python-docx, when installing
 from io import BytesIO
-
-nltk.download('wordnet')
 
 # Load BART tokenizer and model for summarization
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
@@ -73,14 +71,31 @@ def translate_summary(text, target_lang):
         return translated_text
     return text  # If "Original" is selected, return the original text
 
-# Function to summarize the text using the BART model
 def summarize_bart(input_text, max_length, min_length):
-    inputs = tokenizer(input_text, return_tensors="pt", max_length=1024, truncation=True)
-    inputs = inputs.to(device)
-    summary_ids = model.generate(inputs["input_ids"], max_length=max_length, min_length=min_length, do_sample=False)
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-    return summary
-
+    chunk_size = 1024
+    overlap = 10
+    # Tokenize the input text
+    tokens = tokenizer.encode(input_text, return_tensors='pt', truncation=False)
+    
+    # Split the tokens into chunks with overlap
+    chunks = []
+    stride = chunk_size - overlap
+    for i in range(0, tokens.shape[1], stride):
+        chunk = tokens[:, i:i + chunk_size]
+        chunks.append(chunk)
+    
+    # Generate summaries for each chunk
+    summaries = []
+    for chunk in chunks:
+        chunk = chunk.to(device)
+        summary_ids = model.generate(chunk, max_length=max_length, min_length=min_length, do_sample=False)
+        summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+        summaries.append(summary)
+    
+    # Concatenate the summaries
+    full_summary = ' '.join(summaries)
+    
+    return full_summary
 
 # Function to read DOCX files
 def read_docx(file):
@@ -124,12 +139,8 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
             summary = extract_main_points(content)
         elif format_type == "Concepts List (Only works with English Input)":
             summary = extract_concepts_with_definitions(content)
-        elif format_type == "Short Summary":
-            summary = summarize_bart(content, max_length=80, min_length=40)
-        elif format_type == "Medium Summary":
-            summary = summarize_bart(content, max_length=200, min_length=100)
-        elif format_type == "Long Summary":
-            summary = summarize_bart(content, max_length=400, min_length=200)
+        elif format_type == "Summary":
+            summary = summarize_bart(content, max_length=300, min_length=100)
         else:
             summary = content
 
@@ -197,7 +208,7 @@ with gr.Blocks() as demo:
     source = gr.Dropdown(["Text Input", "Web Page URL", "File Upload"], label="Input Type", value="Text Input", interactive=True)
 
     # Input fields
-    text_input_box = gr.Textbox(label="Enter Text", visible=True)
+    text_input_box = gr.Textbox(label="Enter Text", visible=True, lines=3)
     file_input_box = gr.File(label="Upload a File", visible=False, file_types=[".pdf", ".docx"])
     url_input_box = gr.Textbox(label="Give Website URL", visible=False)
 
@@ -206,13 +217,13 @@ with gr.Blocks() as demo:
 
     # Summary type selection
     format_type = gr.Dropdown(
-        ["Main Points", "Concepts List (Only works with English Input)", "Short Summary", "Medium Summary", "Long Summary"],
+        ["Summary", "Main Points", "Concepts List (Only works with English Input)"],
         label="Choose Summary Type",
-        value="Main Points"
+        value="Summary"
     )
 
     # Output box for the generated summary
-    summary_output_box = gr.Textbox(label="Generated Summary", visible=True, lines=10)
+    summary_output_box = gr.Textbox(label="Generated Summary", visible=True, lines=7)
 
     # Button to trigger summary generation
     summary_button = gr.Button("Generate Summary")
