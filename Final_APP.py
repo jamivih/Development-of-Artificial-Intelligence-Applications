@@ -191,6 +191,10 @@ def text_to_speech(input_text, summary_text, summary_generated):
     except Exception as e:
         return None  # Handle any other exceptions
 
+# Function to clear input and output fields
+def clear_fields():
+    return "", None, "", gr.update(visible=True), gr.update(visible=False), gr.update(visible=False), "Text Input", "Original", "Summary", ""
+
 # Dynamic input visibility control based on source type
 def dynamic_input(source):
     if source == "Text Input":
@@ -229,6 +233,9 @@ with gr.Blocks() as demo:
     # Button to trigger summary generation
     summary_button = gr.Button("Generate Summary")
 
+    # Button to clear all fields
+    clear_button = gr.Button("Clear")
+
     # Button to trigger text-to-speech generation
     tts_button = gr.Button("Text to Speech")
 
@@ -247,6 +254,15 @@ with gr.Blocks() as demo:
         fn=text_to_speech,
         inputs=[text_input_box, summary_output_box, summary_generated],
         outputs=gr.Audio(label="Generated Speech", type="filepath")
+    )
+
+    # Trigger the clearing of all fields
+    clear_button.click(
+        fn=clear_fields,
+        inputs=[],
+        outputs=[text_input_box, file_input_box, url_input_box, 
+                 text_input_box, file_input_box, url_input_box, 
+                 source, target_lang, format_type, summary_output_box]
     )
 
     # Dynamically update input visibility based on source type
