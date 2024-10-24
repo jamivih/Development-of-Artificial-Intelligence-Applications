@@ -67,7 +67,7 @@ def extract_concepts_with_definitions(text, num_concepts=10):
 # Function to translate the summarized text
 def translate_summary(text, target_lang):
     if target_lang != "Original":  # Only translate if a language other than "Original" is selected
-        translator = GoogleTranslator(source="en", target=target_lang)
+        translator = GoogleTranslator(source="auto", target=target_lang)
         translated_text = translator.translate(text)
         return translated_text
     return text  # If "Original" is selected, return the original text
@@ -164,6 +164,21 @@ tts_language_map = {
     'fi': 'fi',  # Finnish
     # Add more mappings as needed
 }
+def update_language_options(input_text):
+    try:
+        detected_lang = detect(input_text)
+        languages = ["Original", "en", "fi", "es", "fr", "de"]
+
+        # Remove the detected language from the available translation options
+        if detected_lang in languages:
+            languages.remove(detected_lang)
+
+        # Ensure that the default value is "Original" and no detected language is an option
+        return gr.update(choices=languages, value="Original")
+    
+    except LangDetectException:
+        # If language detection fails, provide default choices without removing any options
+        return gr.update(choices=["Original", "en", "fi", "es", "fr", "de"], value="Original")
 
 # Text-to-speech function, now with language detection and automatic TTS language adjustment
 def text_to_speech(input_text, summary_text, summary_generated):
@@ -225,7 +240,7 @@ with gr.Blocks() as demo:
     url_input_box = gr.Textbox(label="Give Website URL", visible=False)
 
     # Language selection for translation
-    target_lang = gr.Dropdown(["Original", "fi", "es", "fr", "de"], label="Choose Output Language", value="Original")
+    target_lang = gr.Dropdown(["Original", "en", "fi", "es", "fr", "de"], label="Choose Output Language", value="Original")
 
     # Summary type selection
     format_type = gr.Dropdown(
@@ -271,9 +286,13 @@ with gr.Blocks() as demo:
                  text_input_box, file_input_box, url_input_box, 
                  source, target_lang, format_type, summary_output_box]
     )
-
-    # Dynamically update input visibility based on source type
     source.change(fn=dynamic_input, inputs=source, outputs=[text_input_box, file_input_box, url_input_box])
+    # Dynamically update input visibility based on source type
+    text_input_box.change(
+    fn=update_language_options,
+    inputs=text_input_box,
+    outputs=target_lang
+    )
 
 # Launch the interface
 demo.launch()
