@@ -208,7 +208,13 @@ def dynamic_input(source):
 
 # Build Gradio interface
 with gr.Blocks() as demo:
-    gr.Markdown("### Summarization, Translation, and Text-to-Speech App")
+    gr.Markdown("""
+    ### Summarization, Translation, and Text-to-Speech App
+    - The **Smart Summarizer** is an AI-powered tool that uses the **BART model** 
+    to generate concise summaries from text, documents, or URLs.\n 
+    - It also supports summary translation into multiple languages and converts text to speech, 
+    making it a versatile solution for quick and accessible content analysis.
+    """)
 
     # Input type selection
     source = gr.Dropdown(["Text Input", "Web Page URL", "File Upload"], label="Input Type", value="Text Input", interactive=True)
