@@ -12,6 +12,7 @@ import tempfile
 import PyPDF2
 import docx     # Library's name is python-docx, when installing
 from io import BytesIO
+from misc import url_extract
 
 # Load BART tokenizer and model for summarization
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
@@ -120,7 +121,7 @@ def generate_summary(input_text, url, file, format_type, source, target_lang):
     if source == "Text Input":
         content = input_text
     elif source == "Web Page URL":
-        content = url
+        content = url_extract.main()
     elif source == "File Upload" and file is not None:
         # Check file extension to determine the file type
         if file.name.endswith('.pdf'):
