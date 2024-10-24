@@ -12,7 +12,7 @@ import tempfile
 import PyPDF2
 import docx     # Library's name is python-docx, when installing
 from io import BytesIO
-from misc import url_extract
+import url_extract
 
 # Load BART tokenizer and model for summarization
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
