@@ -1,0 +1,9 @@
+deep_translator==1.11.4
+gradio==5.3.0
+gTTS==2.5.3
+langdetect==1.0.9
+nltk==3.9.1
+PyPDF2==3.0.1
+python_docx==1.1.2
+torch==2.5.0
+transformers==4.46.0
