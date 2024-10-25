@@ -1,14 +1,20 @@
 from newspaper import Article
 from requests.exceptions import RequestException
 import re
+import requests
 
 '''
 pip install newspaper3k lxml lxml_html_clean
 
 '''
 def main(url):
+    try:
+        requests.get('https://www.google.com', timeout=5)
+        print('Connection found.')
+    except requests.ConnectionError:
+        print('No internet connection.')
     main_text = extract_main_text(url)
-    main_text = remove_empty_lines(main_text) # removes empty spaces between paragraphs, comment line if not needed
+    main_text = remove_empty_lines(main_text)
 
     return main_text
 

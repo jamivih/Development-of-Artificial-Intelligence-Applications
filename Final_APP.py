@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from collections import Counter
 import torch
 import nltk; nltk.download('popular')
+nltk.download('averaged_perceptron_tagger_eng')
 from nltk.corpus import wordnet
 from deep_translator import GoogleTranslator
 from langdetect import detect, LangDetectException
